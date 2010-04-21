@@ -137,6 +137,14 @@ def handle(fn, d, include):
     # actual loading
     statements = get_statements(fn, abs_fn, base_name)
 
+    # Move bbclasses to the front of the line
+    bbclasses = []
+    for statement in tuple(statements):
+        if isinstance(statement, ast.InheritNode):
+            statements.remove(statement)
+            bbclasses.append(statement)
+    statements[0:0] = bbclasses
+
     # DONE WITH PARSING... time to evaluate
     if ext != ".bbclass" and abs_fn != oldfile:
         d.setVar('FILE', abs_fn)
