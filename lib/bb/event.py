@@ -35,6 +35,12 @@ import bb.utils
 import bb.compat
 import bb.exceptions
 
+from IPython.Debugger import Tracer
+debug_here = Tracer()
+from guppy import hpy
+global hp
+hp = hpy()
+
 # This is the pid for which we should generate the event. This is set when
 # the runqueue forks off.
 worker_pid = 0
@@ -207,6 +213,14 @@ def fire(event, d):
     # desired so they get the task based datastore.
     # UI handlers need to be fired in the server context so we defer this. They
     # don't have a datastore so the datastore context isn't a problem.
+
+    if isinstance(event, ConfigParsed):
+        hi = hp.heap()
+        debug_here()
+        hp.setrelheap()
+    elif isinstance(event, BuildStarted):
+        hi = hp.heap()
+        debug_here()
 
     fire_class_handlers(event, d)
     if worker_fire:
