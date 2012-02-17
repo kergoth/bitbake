@@ -27,6 +27,7 @@
 import re, os
 import logging
 import bb.utils
+from cStringIO import StringIO
 from bb.parse import ParseError, resolve_file, ast, logger
 
 #__config_regexp__  = re.compile( r"(?P<exp>export\s*)?(?P<var>[a-zA-Z0-9\-_+.${}]+)\s*(?P<colon>:)?(?P<ques>\?)?=\s*(?P<apo>['\"]?)(?P<value>.*)(?P=apo)$")
@@ -71,67 +72,76 @@ def include(oldfn, fn, data, error_out):
             raise ParseError("Could not %(error_out)s file %(fn)s" % vars() )
         logger.debug(2, "CONF file '%s' not found", fn)
 
-def handle(fn, data, include):
-    init(data)
+def handle(filename, d=None, include=False):
+    if d is None:
+        d = bb.data.init()
 
-    if include == 0:
-        oldfile = None
-    else:
-        oldfile = data.getVar('FILE')
-
-    abs_fn = resolve_file(fn, data)
-    f = open(abs_fn, 'r')
+    abs_filename = resolve_file(filename, d)
 
     if include:
-        bb.parse.mark_dependency(data, abs_fn)
+        bb.parse.mark_dependency(d, abs_filename)
 
-    statements = ast.StatementGroup()
-    lineno = 0
-    while True:
-        lineno = lineno + 1
-        s = f.readline()
-        if not s: break
-        w = s.strip()
-        if not w: continue          # skip empty lines
-        s = s.rstrip()
-        if s[0] == '#': continue    # skip comments
-        while s[-1] == '\\':
-            s2 = f.readline().strip()
-            lineno = lineno + 1
-            s = s[:-1] + s2
-        feeder(lineno, s, fn, statements)
+    with open(abs_filename) as fobj:
+        nodes = parse(fobj, filename)
 
-    # DONE WITH PARSING... time to evaluate
-    data.setVar('FILE', abs_fn)
-    statements.eval(data)
+    if include:
+        oldfile = d.getVar('FILE')
+    else:
+        oldfile = None
+    d.setVar('FILE', abs_filename)
+
+    nodes.eval(d)
+
     if oldfile:
-        data.setVar('FILE', oldfile)
+        d.setVar('FILE', oldfile)
 
-    return data
+    return d
 
-def feeder(lineno, s, fn, statements):
-    m = __config_regexp__.match(s)
+def parse_string(string, filename='<string>', lineoffset=0):
+    fileobj = StringIO(string)
+    return parse(fileobj, filename, lineoffset)
+
+def parse(fileobj, filename='<string>', lineoffset=0):
+    statements = ast.StatementGroup()
+    content = ""
+    for lineno, line in enumerate(fileobj, lineoffset):
+        line = line.rstrip()
+
+        if not line.lstrip():
+            continue
+
+        if line[0] == '#':
+            continue
+
+        if line.endswith('\\'):
+            content += line[:-1]
+            continue
+        elif content:
+            line = content + line
+            content = ""
+
+        statements.append(parse_line(line, lineno, filename))
+
+    return statements
+
+def parse_line(line, lineno, filename):
+    m = __config_regexp__.match(line)
     if m:
-        groupd = m.groupdict()
-        ast.handleData(statements, fn, lineno, groupd)
-        return
+        return ast.DataNode(filename, lineno, m.groupdict())
 
-    m = __include_regexp__.match(s)
+    m = __include_regexp__.match(line)
     if m:
-        ast.handleInclude(statements, fn, lineno, m, False)
-        return
+        return ast.IncludeNode(filename, lineno, what_file=m.group(1), force=False)
 
-    m = __require_regexp__.match(s)
+    m = __require_regexp__.match(line)
     if m:
-        ast.handleInclude(statements, fn, lineno, m, True)
-        return
+        return ast.IncludeNode(filename, lineno, what_file=m.group(1), force=True)
 
-    m = __export_regexp__.match(s)
+    m = __export_regexp__.match(line)
     if m:
-        ast.handleExport(statements, fn, lineno, m)
-        return
+        return ast.ExportNode(filename, lineno, var=m.group(1))
 
-    raise ParseError("%s:%d: unparsed line: '%s'" % (fn, lineno, s));
+    raise ParseError("%s:%d: unparsed line: '%s'" % (filename, lineno, line));
 
 # Add us to the handlers list
 from bb.parse import handlers

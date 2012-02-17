@@ -245,7 +245,7 @@ def feeder(lineno, s, fn, root, statements):
         ast.handleInherit(statements, fn, lineno, m)
         return
 
-    return ConfHandler.feeder(lineno, s, fn, statements)
+    statements.append(ConfHandler.parse_line(s, lineno, fn))
 
 # Add us to the handlers list
 from .. import handlers
