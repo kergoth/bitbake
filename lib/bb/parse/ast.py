@@ -102,13 +102,23 @@ class DataNode(AstNode):
             bb.data.update_data(e)
             val = e.expand(groupd["value"], key + "[:=]")
         elif "append" in groupd and groupd["append"] != None:
-            val = "%s %s" % ((self.getFunc(key, data) or ""), groupd["value"])
+            val = self.getFunc(key, data) or ""
+            if isinstance(val, basestring):
+                val += " " + groupd["value"]
+            else:
+                val += groupd["value"]
         elif "prepend" in groupd and groupd["prepend"] != None:
-            val = "%s %s" % (groupd["value"], (self.getFunc(key, data) or ""))
+            val = self.getFunc(key, data) or ""
+            if isinstance(val, basestring):
+                val = groupd["value"] + " " + val
+            else:
+                val = groupd["value"] + val
         elif "postdot" in groupd and groupd["postdot"] != None:
-            val = "%s%s" % ((self.getFunc(key, data) or ""), groupd["value"])
+            val = self.getFunc(key, data) or ""
+            val += groupd["value"]
         elif "predot" in groupd and groupd["predot"] != None:
-            val = "%s%s" % (groupd["value"], (self.getFunc(key, data) or ""))
+            val = self.getFunc(key, data) or ""
+            val = groupd["value"] + val
         else:
             val = groupd["value"]
 
