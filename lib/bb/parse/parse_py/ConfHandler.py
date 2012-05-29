@@ -128,7 +128,10 @@ def feeder(lineno, s, fn, statements):
         if groupd["apo"]:
             value = groupd["value"][1:-1]
         else:
-            value = json.loads(groupd["value"])
+            try:
+                value = json.loads(groupd["value"])
+            except ValueError as exc:
+                raise ParseError("json error for `%s`: %s" % (groupd["value"], exc), fn, lineno)
         groupd["value"] = value
         ast.handleData(statements, fn, lineno, groupd)
         return
