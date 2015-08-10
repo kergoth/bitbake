@@ -66,8 +66,10 @@ Supported SRC_URI options are:
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+import itertools
 import os
 import re
+import tempfile
 import bb
 from   bb    import data
 from   bb.fetch2 import FetchMethod
@@ -118,11 +120,23 @@ class Git(FetchMethod):
         branches = ud.parm.get("branch", "master").split(',')
         if len(branches) != len(ud.names):
             raise bb.fetch2.ParameterError("The number of name and branch parameters is not balanced", ud.url)
+
+        shallow_default = d.getVar("BB_GIT_SHALLOW", True)
+        ud.shallows = {}
         ud.branches = {}
-        for name in ud.names:
-            branch = branches[ud.names.index(name)]
+        for pos, name in enumerate(ud.names):
+            branch = branches[pos]
             ud.branches[name] = branch
             ud.unresolvedrev[name] = branch
+
+            shallow = d.getVar("BB_GIT_SHALLOW_%s" % name, True) or shallow_default
+            if shallow == "0":
+                shallow = None
+            ud.shallows[name] = shallow
+
+        if not shallow_default and not filter(None, ud.shallows.itervalues()):
+            # No shallows
+            ud.shallows = None
 
         ud.basecmd = data.getVar("FETCHCMD_git", d, True) or "git -c core.fsyncobjectfiles=0"
 
@@ -145,27 +159,42 @@ class Git(FetchMethod):
         # per revision, so that even the revision disappears from the
         # upstream repo in the future, the mirror will remain intact and still
         # contains the revision
-        if ud.rebaseable:
+        if ud.shallows:
+            for name, shallow in ud.shallows.iteritems():
+                gitsrcname = '%s_%s_%s' % (gitsrcname, ud.branches[name].replace('/', '.'), ud.revisions[name])
+                if shallow:
+                    gitsrcname = gitsrcname + "_" + shallow
+        elif ud.rebaseable:
             for name in ud.names:
                 gitsrcname = gitsrcname + '_' + ud.revisions[name]
-        ud.mirrortarball = 'git2_%s.tar.gz' % (gitsrcname)
-        ud.fullmirror = os.path.join(d.getVar("DL_DIR", True), ud.mirrortarball)
-        gitdir = d.getVar("GITDIR", True) or (d.getVar("DL_DIR", True) + "/git2/")
-        ud.clonedir = os.path.join(gitdir, gitsrcname)
 
+        dl_dir = d.getVar("DL_DIR", True)
+        gitdir = d.getVar("GITDIR", True) or (dl_dir + "/git2/")
+        ud.clonedir = os.path.join(gitdir, gitsrcname)
         ud.localfile = ud.clonedir
 
+        ud.mirrortarball = 'git2_%s.tar.gz' % gitsrcname
+        ud.fullmirror = os.path.join(dl_dir, ud.mirrortarball)
+
     def localpath(self, ud, d):
-        return ud.clonedir
+        if (ud.shallows and
+                not os.path.exists(ud.clonedir) and
+                os.path.exists(ud.fullmirror)):
+            return ud.fullmirror
+        else:
+            return ud.clonedir
 
     def need_update(self, ud, d):
         if not os.path.exists(ud.clonedir):
-            return True
+            if ud.shallows and os.path.exists(ud.fullmirror):
+                return False
+            else:
+                return True
         os.chdir(ud.clonedir)
         for name in ud.names:
             if not self._contains_ref(ud, d, name):
                 return True
-        if ud.write_tarballs and not os.path.exists(ud.fullmirror):
+        if ud.write_tarballs and not os.path.exists(ud.fullmirror if not ud.shallows else ud.fullmirror):
             return True
         return False
 
@@ -185,9 +214,14 @@ class Git(FetchMethod):
 
         # If the checkout doesn't exist and the mirror tarball does, extract it
         if not os.path.exists(ud.clonedir) and os.path.exists(ud.fullmirror):
-            bb.utils.mkdirhier(ud.clonedir)
-            os.chdir(ud.clonedir)
-            runfetchcmd("tar -xzf %s" % (ud.fullmirror), d)
+            if ud.shallows:
+                ud.localpath = ud.fullmirror
+                ud.ignore_checksums = True
+                return
+            else:
+                bb.utils.mkdirhier(ud.clonedir)
+                os.chdir(ud.clonedir)
+                runfetchcmd("tar -xzf %s" % ud.fullmirror, d)
 
         repourl = self._get_repo_url(ud)
 
@@ -228,22 +262,70 @@ class Git(FetchMethod):
 
     def build_mirror_data(self, ud, d):
         # Generate a mirror tarball if needed
-        if ud.write_tarballs and (ud.repochanged or not os.path.exists(ud.fullmirror)):
-            # it's possible that this symlink points to read-only filesystem with PREMIRROR
-            if os.path.islink(ud.fullmirror):
-                os.unlink(ud.fullmirror)
+        if ud.shallows:
+            tarball = ud.fullmirror
+            should_write = not os.path.exists(ud.fullmirror)
+        else:
+            tarball = ud.fullmirror
+            should_write = ud.repochanged or not os.path.exists(ud.fullmirror)
 
-            os.chdir(ud.clonedir)
-            logger.info("Creating tarball of git repository")
-            runfetchcmd("tar -czf %s %s" % (ud.fullmirror, os.path.join(".") ), d)
-            runfetchcmd("touch %s.done" % (ud.fullmirror), d)
+        if ud.write_tarballs and should_write:
+            # it's possible that this symlink points to read-only filesystem with PREMIRROR
+            if os.path.islink(tarball):
+                os.unlink(tarball)
+
+            if ud.shallows:
+                tempdir = tempfile.mkdtemp()
+                shallowclone = os.path.join(tempdir, 'git')
+                os.makedirs(shallowclone)
+                try:
+                    os.chdir(shallowclone)
+                    runfetchcmd("%s init --bare" % ud.basecmd, d)
+                    with open(os.path.join(shallowclone, 'shallow'), 'w') as f:
+                        for name, shallow in ud.shallows.iteritems():
+                            if not shallow:
+                                continue
+                            revision = ud.revisions[name]
+
+                            for rev in [shallow + "^{}", shallow]:
+                                try:
+                                    revision = runfetchcmd("GIT_DIR=%s %s rev-parse %s" % (ud.clonedir, ud.basecmd, rev), d)
+                                except bb.fetch2.FetchError:
+                                    pass
+                                else:
+                                    break
+                            else:
+                                try:
+                                    shallow = int(shallow)
+                                except ValueError:
+                                    raise bb.fetch2.FetchError("Invalid shallow= parameter value '%s' in %s" % (shallow, ud.url))
+                                else:
+                                    revision = runfetchcmd("GIT_DIR=%s %s rev-parse %s~%d" % (ud.clonedir, ud.basecmd, revision, shallow - 1), d)
+
+                            f.write(revision)
+
+                    runfetchcmd("%s remote add origin %s" % (ud.basecmd, ud.clonedir), d)
+                    for name, branch in ud.branches.iteritems():
+                        runfetchcmd("%s fetch -a origin %s" % (ud.basecmd, branch), d)
+                    repourl = self._get_repo_url(ud)
+                    runfetchcmd("%s remote set-url origin %s" % (ud.basecmd, repourl), d)
+                    logger.info("Creating tarball of git repository")
+                    runfetchcmd("tar -czf %s %s" % (tarball, os.path.join(".")), d)
+                    runfetchcmd("touch %s.done" % tarball, d)
+                finally:
+                    bb.utils.remove(tempdir, recurse=True)
+            else:
+                os.chdir(ud.clonedir)
+                logger.info("Creating tarball of git repository")
+                runfetchcmd("tar -czf %s %s" % (tarball, os.path.join(".")), d)
+                runfetchcmd("touch %s.done" % tarball, d)
 
     def unpack(self, ud, destdir, d):
         """ unpack the downloaded src to destdir"""
 
         subdir = ud.parm.get("subpath", "")
         if subdir != "":
-            readpathspec = ":%s" % (subdir)
+            readpathspec = ":%s" % subdir
             def_destsuffix = "%s/" % os.path.basename(subdir.rstrip('/'))
         else:
             readpathspec = ""
@@ -254,27 +336,35 @@ class Git(FetchMethod):
         if os.path.exists(destdir):
             bb.utils.prunedir(destdir)
 
-        cloneflags = "-s -n"
-        if ud.bareclone:
-            cloneflags += " --mirror"
+        if ud.shallows and not os.path.exists(ud.clonedir):
+            gitdir = os.path.join(destdir, '.git')
+            bb.utils.mkdirhier(gitdir)
+            os.chdir(gitdir)
+            runfetchcmd("tar -xzf %s" % ud.fullmirror, d)
+            runfetchcmd("git config core.bare false", d)
+        else:
+            cloneflags = "-s -n"
+            if ud.bareclone:
+                cloneflags += " --mirror"
 
-        # Versions of git prior to 1.7.9.2 have issues where foo.git and foo get confused
-        # and you end up with some horrible union of the two when you attempt to clone it
-        # The least invasive workaround seems to be a symlink to the real directory to
-        # fool git into ignoring any .git version that may also be present.
-        #
-        # The issue is fixed in more recent versions of git so we can drop this hack in future
-        # when that version becomes common enough.
-        clonedir = ud.clonedir
-        if not ud.path.endswith(".git"):
-            indirectiondir = destdir[:-1] + ".indirectionsymlink"
-            if os.path.exists(indirectiondir):
-                os.remove(indirectiondir)
-            bb.utils.mkdirhier(os.path.dirname(indirectiondir))
-            os.symlink(ud.clonedir, indirectiondir)
-            clonedir = indirectiondir
+            # Versions of git prior to 1.7.9.2 have issues where foo.git and foo get confused
+            # and you end up with some horrible union of the two when you attempt to clone it
+            # The least invasive workaround seems to be a symlink to the real directory to
+            # fool git into ignoring any .git version that may also be present.
+            #
+            # The issue is fixed in more recent versions of git so we can drop this hack in future
+            # when that version becomes common enough.
+            clonedir = ud.clonedir
+            if not ud.path.endswith(".git"):
+                indirectiondir = destdir[:-1] + ".indirectionsymlink"
+                if os.path.exists(indirectiondir):
+                    os.remove(indirectiondir)
+                bb.utils.mkdirhier(os.path.dirname(indirectiondir))
+                os.symlink(ud.clonedir, indirectiondir)
+                clonedir = indirectiondir
 
-        runfetchcmd("%s clone %s %s/ %s" % (ud.basecmd, cloneflags, clonedir, destdir), d)
+            runfetchcmd("%s clone %s %s/ %s" % (ud.basecmd, cloneflags, clonedir, destdir), d)
+
         os.chdir(destdir)
         repourl = self._get_repo_url(ud)
         runfetchcmd("%s remote set-url origin %s" % (ud.basecmd, repourl), d)
