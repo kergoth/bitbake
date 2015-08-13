@@ -159,12 +159,7 @@ class Git(FetchMethod):
         # per revision, so that even the revision disappears from the
         # upstream repo in the future, the mirror will remain intact and still
         # contains the revision
-        if ud.shallows:
-            for name, shallow in ud.shallows.iteritems():
-                gitsrcname = '%s_%s_%s' % (gitsrcname, ud.branches[name].replace('/', '.'), ud.revisions[name])
-                if shallow:
-                    gitsrcname = gitsrcname + "_" + shallow
-        elif ud.rebaseable:
+        if ud.rebaseable:
             for name in ud.names:
                 gitsrcname = gitsrcname + '_' + ud.revisions[name]
 
@@ -175,18 +170,27 @@ class Git(FetchMethod):
 
         ud.mirrortarball = 'git2_%s.tar.gz' % gitsrcname
         ud.fullmirror = os.path.join(dl_dir, ud.mirrortarball)
+        if ud.shallows:
+            tarballname = gitsrcname
+            for name, shallow in ud.shallows.iteritems():
+                tarballname = '%s_%s_%s' % (tarballname, ud.branches[name].replace('/', '.'), ud.revisions[name])
+                if shallow:
+                    tarballname = tarballname + "_" + shallow
+            ud.shallowtarball = 'git2_%s.tar.gz' % tarballname
+            ud.fullshallow = os.path.join(dl_dir, ud.shallowtarball)
+            ud.mirrortarballs = [ud.shallowtarball, ud.mirrortarball]
 
     def localpath(self, ud, d):
         if (ud.shallows and
                 not os.path.exists(ud.clonedir) and
-                os.path.exists(ud.fullmirror)):
-            return ud.fullmirror
+                os.path.exists(ud.fullshallow)):
+            return ud.fullshallow
         else:
             return ud.clonedir
 
     def need_update(self, ud, d):
         if not os.path.exists(ud.clonedir):
-            if ud.shallows and os.path.exists(ud.fullmirror):
+            if ud.shallows and os.path.exists(ud.fullshallow):
                 return False
             else:
                 return True
@@ -194,7 +198,7 @@ class Git(FetchMethod):
         for name in ud.names:
             if not self._contains_ref(ud, d, name):
                 return True
-        if ud.write_tarballs and not os.path.exists(ud.fullmirror if not ud.shallows else ud.fullmirror):
+        if ud.write_tarballs and not os.path.exists(ud.fullmirror if not ud.shallows else ud.fullshallow):
             return True
         return False
 
@@ -212,11 +216,10 @@ class Git(FetchMethod):
 
         ud.repochanged = not os.path.exists(ud.fullmirror)
 
-        if (os.path.exists(ud.fullmirror) and
-                (not os.path.exists(ud.clonedir) or self.need_update(ud, d))):
-            if ud.shallows:
+        if not os.path.exists(ud.clonedir) or self.need_update(ud, d):
+            if ud.shallows and os.path.exists(ud.fullshallow):
                 return
-            else:
+            elif os.path.exists(ud.fullmirror):
                 bb.utils.remove(ud.clonedir, recurse=True)
                 bb.utils.mkdirhier(ud.clonedir)
                 os.chdir(ud.clonedir)
@@ -262,8 +265,8 @@ class Git(FetchMethod):
     def build_mirror_data(self, ud, d):
         # Generate a mirror tarball if needed
         if ud.shallows:
-            tarball = ud.fullmirror
-            should_write = not os.path.exists(ud.fullmirror)
+            tarball = ud.fullshallow
+            should_write = not os.path.exists(ud.fullshallow)
         else:
             tarball = ud.fullmirror
             should_write = ud.repochanged or not os.path.exists(ud.fullmirror)
@@ -344,7 +347,7 @@ class Git(FetchMethod):
             gitdir = os.path.join(destdir, '.git')
             bb.utils.mkdirhier(gitdir)
             os.chdir(gitdir)
-            runfetchcmd("tar -xzf %s" % ud.fullmirror, d)
+            runfetchcmd("tar -xzf %s" % ud.fullshallow, d)
             runfetchcmd("git config core.bare false", d)
         else:
             cloneflags = "-s -n"
