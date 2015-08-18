@@ -180,8 +180,9 @@ class Git(FetchMethod):
 
         ud.repochanged = not os.path.exists(ud.fullmirror)
 
-        # If the checkout doesn't exist and the mirror tarball does, extract it
-        if not os.path.exists(ud.clonedir) and os.path.exists(ud.fullmirror):
+        if (os.path.exists(ud.fullmirror) and
+                (not os.path.exists(ud.clonedir) or self.need_update(ud, d))):
+            bb.utils.remove(ud.clonedir, recurse=True)
             bb.utils.mkdirhier(ud.clonedir)
             os.chdir(ud.clonedir)
             runfetchcmd("tar -xzf %s" % (ud.fullmirror), d)
