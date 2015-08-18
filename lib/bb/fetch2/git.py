@@ -216,16 +216,16 @@ class Git(FetchMethod):
 
         ud.repochanged = not os.path.exists(ud.fullmirror)
 
-        # If the checkout doesn't exist and the mirror tarball does, extract it
-        if not os.path.exists(ud.clonedir):
-            if ud.shallows and os.path.exists(ud.fullshallow):
+        if ud.shallows and os.path.exists(ud.fullshallow):
+            if not os.path.exists(ud.clonedir) or self.need_update(ud, d):
                 ud.localpath = ud.fullshallow
                 ud.ignore_checksums = True
                 return
-            elif os.path.exists(ud.fullmirror):
-                bb.utils.mkdirhier(ud.clonedir)
-                os.chdir(ud.clonedir)
-                runfetchcmd("tar -xzf %s" % ud.fullmirror, d)
+        elif not os.path.exists(ud.clonedir) and os.path.exists(ud.fullmirror):
+            bb.utils.remove(ud.clonedir, recurse=True)
+            bb.utils.mkdirhier(ud.clonedir)
+            os.chdir(ud.clonedir)
+            runfetchcmd("tar -xzf %s" % ud.fullmirror, d)
 
         repourl = self._get_repo_url(ud)
 
@@ -345,7 +345,7 @@ class Git(FetchMethod):
         if os.path.exists(destdir):
             bb.utils.prunedir(destdir)
 
-        if ud.shallows and not os.path.exists(ud.clonedir):
+        if ud.shallows and (not os.path.exists(ud.clonedir) or self.need_update(ud, d)):
             gitdir = os.path.join(destdir, '.git')
             bb.utils.mkdirhier(gitdir)
             os.chdir(gitdir)
