@@ -181,19 +181,11 @@ class Git(FetchMethod):
             ud.mirrortarballs = [ud.shallowtarball, ud.mirrortarball]
 
     def localpath(self, ud, d):
-        if (ud.shallows and
-                not os.path.exists(ud.clonedir) and
-                os.path.exists(ud.fullshallow)):
-            return ud.fullshallow
-        else:
-            return ud.clonedir
+        return ud.clonedir
 
     def need_update(self, ud, d):
         if not os.path.exists(ud.clonedir):
-            if ud.shallows and os.path.exists(ud.fullshallow):
-                return False
-            else:
-                return True
+            return True
         os.chdir(ud.clonedir)
         for name in ud.names:
             if not self._contains_ref(ud, d, name):
@@ -214,16 +206,16 @@ class Git(FetchMethod):
     def download(self, ud, d):
         """Fetch url"""
 
-        ud.repochanged = not os.path.exists(ud.fullmirror)
+        if ud.shallows and os.path.exists(ud.fullshallow):
+            ud.localpath = ud.fullshallow
+            return
+        elif os.path.exists(ud.fullmirror):
+            bb.utils.remove(ud.clonedir, recurse=True)
+            bb.utils.mkdirhier(ud.clonedir)
+            os.chdir(ud.clonedir)
+            runfetchcmd("tar -xzf %s" % (ud.fullmirror), d)
 
-        if not os.path.exists(ud.clonedir) or self.need_update(ud, d):
-            if ud.shallows and os.path.exists(ud.fullshallow):
-                return
-            elif os.path.exists(ud.fullmirror):
-                bb.utils.remove(ud.clonedir, recurse=True)
-                bb.utils.mkdirhier(ud.clonedir)
-                os.chdir(ud.clonedir)
-                runfetchcmd("tar -xzf %s" % (ud.fullmirror), d)
+        ud.repochanged = not os.path.exists(ud.fullmirror)
 
         repourl = self._get_repo_url(ud)
 
