@@ -255,7 +255,9 @@ build results (as the layer priority order has effectively changed).
                 recipefile.write('##### bbappended from %s #####\n' % self.get_file_layer(appendname))
                 recipefile.writelines(appendfile.readlines())
 
-    def register_commands(self, sp):
+    def register_commands(self, subparsers):
+        sp = subparsers.add_parser_group('Action Commands:')
+
         parser_add_layer = self.add_command(sp, 'add-layer', self.do_add_layer, parserecipes=False)
         parser_add_layer.add_argument('layerdir', nargs='+', help='Layer directory/directories to add')
 

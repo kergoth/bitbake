@@ -202,13 +202,13 @@ class LayerIndexPlugin(ActionPlugin):
                 self.do_add_layer(localargs)
 
     def do_layerindex_show_depends(self, args):
-        """Find layer dependencies from layer index.
-"""
+        """Find layer dependencies from layer index."""
         args.show_only = True
         args.ignore = []
         self.do_layerindex_fetch(args)
 
-    def register_commands(self, sp):
+    def register_commands(self, subparsers):
+        sp = subparsers.add_parser_group('Layer Index Commands:')
         parser_layerindex_fetch = self.add_command(sp, 'layerindex-fetch', self.do_layerindex_fetch, parserecipes=False)
         parser_layerindex_fetch.add_argument('-n', '--show-only', help='show dependencies and do nothing else', action='store_true')
         parser_layerindex_fetch.add_argument('-b', '--branch', help='branch name to fetch')
