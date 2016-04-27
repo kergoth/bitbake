@@ -258,7 +258,9 @@ class LayerIndexPlugin(ActionPlugin):
         args.ignore = []
         self.do_layerindex_fetch(args)
 
-    def register_commands(self, sp):
+    def register_commands(self, subparsers):
+        sp = subparsers.add_parser_group('Layer Index Commands:')
+
         parser_layerindex_fetch = self.add_command(sp, 'layerindex-fetch', self.do_layerindex_fetch)
         parser_layerindex_fetch.add_argument('-n', '--show-only', help='show dependencies and do nothing else', action='store_true')
         parser_layerindex_fetch.add_argument('-b', '--branch', help='branch name to fetch (default %(default)s)', default='master')

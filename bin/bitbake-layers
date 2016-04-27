@@ -29,6 +29,7 @@ bindir = os.path.dirname(__file__)
 topdir = os.path.dirname(bindir)
 sys.path[0:0] = [os.path.join(topdir, 'lib')]
 
+import bb.argparse_bb
 import bb.tinfoil
 
 def logger_create(name, output=sys.stderr):
@@ -52,7 +53,7 @@ def logger_setup_color(logger, color='auto'):
 logger = logger_create('bitbake-layers', sys.stdout)
 
 def main():
-    parser = argparse.ArgumentParser(
+    parser = bb.argparse_bb.ArgumentParser(
         description="BitBake layers utility",
         epilog="Use %(prog)s <subcommand> --help to get help on a specific command",
         add_help=False)

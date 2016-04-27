@@ -470,6 +470,8 @@ NOTE: .bbappend files can impact the dependencies.
             logger.plain("%s %s %s" % (f, keyword, best_realfn))
 
     def register_commands(self, sp):
+        sp = subparsers.add_parser_group('Query Commands:')
+
         self.add_command(sp, 'show-layers', self.do_show_layers, parserecipes=False)
 
         parser_show_overlayed = self.add_command(sp, 'show-overlayed', self.do_show_overlayed)
