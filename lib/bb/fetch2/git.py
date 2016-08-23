@@ -438,10 +438,17 @@ class Git(FetchMethod):
             else:
                 shallow_branches.append(r)
 
+        revs_cmd = "%s rev-list %s" % (gitcmd, " ".join(shallow_branches))
+        revs = len(runfetchcmd(revs_cmd, d, workdir=git_dir).splitlines())
+
         self._make_repo_shallow(shallow_revisions, git_dir, gitcmd, d, branches=shallow_branches or None)
 
         alternates_file = os.path.join(git_dir, "objects", "info", "alternates")
         os.unlink(alternates_file)
+
+        new_revs = len(runfetchcmd(revs_cmd, d, workdir=git_dir).splitlines())
+        if revs > len(shallow_branches) and new_revs == revs:
+            bb.fatal("Shallow operations did not shrink the git repository")
 
     def _make_repo_shallow(self, revisions, git_dir, gitcmd, d, branches=None):
         if branches is not None:
