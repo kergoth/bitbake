@@ -227,6 +227,12 @@ class Git(FetchMethod):
             if revs:
                 ud.shallow_revs.extend(revs.split())
 
+        if (ud.shallow and
+                not ud.shallow_revs and
+                all(ud.shallow_depths[n] == 0 for n in ud.names)):
+            # Shallow disabled for this URL
+            ud.shallow = False
+
         if ud.usehead:
             ud.unresolvedrev['default'] = 'HEAD'
 
