@@ -73,18 +73,17 @@ Supported SRC_URI options are:
 import collections
 import errno
 import fnmatch
-import itertools
 import os
 import re
 import subprocess
 import tempfile
 import bb
-import errno
 import bb.progress
 from   bb    import data
 from   bb.fetch2 import FetchMethod
 from   bb.fetch2 import runfetchcmd
 from   bb.fetch2 import logger
+
 
 class GitProgressHandler(bb.progress.LineFilterProgressHandler):
     """Extract progress information from git output"""
@@ -269,9 +268,9 @@ class Git(FetchMethod):
                     tarballname = "%s-%s" % (tarballname, depth)
 
             if not ud.nobranch:
-                shallow_refs = ud.branches.values()
-                shallow_refs = itertools.chain(shallow_refs, (r.replace('refs/heads/', '').replace('refs/remotes/origin/', '') for r in ud.shallow_extra_refs))
-                tarballname = "%s_%s" % (tarballname, "_".join(sorted(shallow_refs)).replace('/', '.').replace('*', 'ALL'))
+                shallow_refs = list(ud.branches.values())
+                shallow_refs.extend(r.replace('refs/heads/', '').replace('*', 'ALL') for r in ud.shallow_extra_refs)
+                tarballname = "%s_%s" % (tarballname, "_".join(sorted(shallow_refs)).replace('/', '.'))
             ud.shallowtarball = 'gitshallow_%s.tar.gz' % tarballname
             ud.fullshallow = os.path.join(dl_dir, ud.shallowtarball)
             ud.mirrortarballs = [ud.shallowtarball, ud.mirrortarball]
@@ -410,7 +409,7 @@ class Git(FetchMethod):
             shallow_branches.append(ref)
             runfetchcmd("%s update-ref %s %s" % (ud.basecmd, ref, revision), d, workdir=dest)
 
-        # Map branch depths to revisions
+        # Map srcrev+depths to revisions
         parsed = runfetchcmd("%s rev-parse %s" % (ud.basecmd, " ".join(to_parse)), d, workdir=dest)
         shallow_revisions = ud.shallow_revs + parsed.splitlines()
 
