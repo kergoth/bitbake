@@ -412,6 +412,8 @@ class Git(FetchMethod):
             # srcrev, to avoid keeping unnecessary history beyond that.
             if nobranch:
                 ref = "refs/shallow/%s" % name
+            elif bareclone:
+                ref = "refs/heads/%s" % branch
             else:
                 ref = "refs/remotes/origin/%s" % branch
 
@@ -421,7 +423,9 @@ class Git(FetchMethod):
         all_refs = runfetchcmd('{} for-each-ref "--format=%(refname)"'.format(gitcmd),
                                d, workdir=dest).splitlines()
         for r in extra_refs:
-            r = r.replace('refs/heads/', 'refs/remotes/origin/')
+            if not bareclone:
+                r = r.replace('refs/heads/', 'refs/remotes/origin/')
+
             if '*' in r:
                 matches = filter(lambda a: fnmatch.fnmatchcase(a, r) and not a.endswith('/HEAD'), all_refs)
                 shallow_branches.extend(matches)
