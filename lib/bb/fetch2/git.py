@@ -272,6 +272,9 @@ class Git(FetchMethod):
         ud.fullmirror = os.path.join(dl_dir, ud.mirrortarball)
         if ud.shallow:
             tarballname = gitsrcname
+            if ud.bareclone:
+                tarballname = "%s_bare" % tarballname
+
             if ud.shallow_revs:
                 tarballname = "%s_%s" % (tarballname, "_".join(sorted(ud.shallow_revs)))
 
