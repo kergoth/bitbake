@@ -126,22 +126,6 @@ class GitProgressHandler(bb.progress.LineFilterProgressHandler):
         super(GitProgressHandler, self).write(string)
 
 
-def iter_except(func, exception, start=None):
-    """Yield a function repeatedly until it raises an exception."""
-    try:
-        if start is not None:
-            yield start()
-        while True:
-            yield func()
-    except exception:
-        pass
-
-
-def iter_extend(iterable, length, obj=None):
-    """Ensure that iterable is the specified length by extending with obj"""
-    return itertools.islice(itertools.chain(iterable, itertools.repeat(obj)), length)
-
-
 class Git(FetchMethod):
     """Class to fetch a module or modules from git repositories"""
     def init(self, d):
