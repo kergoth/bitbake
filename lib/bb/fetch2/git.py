@@ -365,8 +365,7 @@ class Git(FetchMethod):
                 tempdir = tempfile.mkdtemp(dir=d.getVar('DL_DIR', True))
                 shallowclone = os.path.join(tempdir, 'git')
                 try:
-                    branchinfo = dict((name, (ud.shallow_depths[name], ud.revisions[name], ud.branches[name])) for name in ud.names)
-                    self._populate_shallowclone(ud.clonedir, shallowclone, ud.basecmd, branchinfo, ud.nobranch, ud.shallow_extra_refs, ud.shallow_revs, ud.bareclone, d)
+                    self.clone_shallow_local(ud, shallowclone, d)
 
                     logger.info("Creating tarball of git repository")
                     runfetchcmd("tar -czf %s ." % ud.fullshallow, d, workdir=shallowclone)
@@ -381,36 +380,45 @@ class Git(FetchMethod):
             runfetchcmd("tar -czf %s %s" % (ud.fullmirror, os.path.join(".") ), d, workdir=ud.clonedir)
             runfetchcmd("touch %s.done" % (ud.fullmirror), d)
 
-    def _populate_shallowclone(self, source, dest, gitcmd, branchinfo, nobranch, extra_refs, shallow_revisions, bareclone, d):
+    def clone_shallow_local(self, ud, dest, d):
         """Clone the repo, remove the history of shallow_revisions from it, and
         filter its refs to those we use + extra_refs.
 
         The upstream url of the new clone isn't set at this time, as it'll be
         set correctly when unpacked."""
         cloneflags = "-s -n"
-        if bareclone:
+        if ud.bareclone:
             cloneflags += " --mirror"
-        runfetchcmd("%s clone %s %s %s" % (gitcmd, cloneflags, source, dest), d)
+        runfetchcmd("%s clone %s %s %s" % (ud.basecmd, cloneflags, ud.clonedir, dest), d)
 
-        shallow_branches = []
-        for name, (depth, revision, branch) in branchinfo.items():
-            # For nobranch, we need a ref, otherwise the commits will be
-            # removed, and for non-nobranch, we truncate the branch to our
+        branchinfo = ((name, (ud.shallow_depths[name], ud.revisions[name], ud.branches[name])) for name in ud.names)
+        to_parse, shallow_branches = [], []
+        for name, (depth, revision, branch) in branchinfo:
+            if depth:
+                to_parse.append('%s~%d^{}' % (revision, depth - 1))
+
+            # For ud.nobranch, we need a ref, otherwise the commits will be
+            # removed, and for non-ud.nobranch, we truncate the branch to our
             # srcrev, to avoid keeping unnecessary history beyond that.
-            if nobranch:
+            if ud.nobranch:
                 ref = "refs/shallow/%s" % name
-            elif bareclone:
+            elif ud.bareclone:
                 ref = "refs/heads/%s" % branch
             else:
                 ref = "refs/remotes/origin/%s" % branch
 
             shallow_branches.append(ref)
-            runfetchcmd("%s update-ref %s %s" % (gitcmd, ref, revision), d, workdir=dest)
+            runfetchcmd("%s update-ref %s %s" % (ud.basecmd, ref, revision), d, workdir=dest)
 
-        all_refs = runfetchcmd('{} for-each-ref "--format=%(refname)"'.format(gitcmd),
+        # Map branch depths to revisions
+        parsed = runfetchcmd("%s rev-parse %s" % (ud.basecmd, " ".join(to_parse)), d, workdir=dest)
+        shallow_revisions = ud.shallow_revs + parsed.splitlines()
+
+        # Apply extra ref wildcards
+        all_refs = runfetchcmd('{} for-each-ref "--format=%(refname)"'.format(ud.basecmd),
                                d, workdir=dest).splitlines()
-        for r in extra_refs:
-            if not bareclone:
+        for r in ud.shallow_extra_refs:
+            if not ud.bareclone:
                 r = r.replace('refs/heads/', 'refs/remotes/origin/')
 
             if '*' in r:
@@ -418,15 +426,6 @@ class Git(FetchMethod):
                 shallow_branches.extend(matches)
             else:
                 shallow_branches.append(r)
-
-        # Map branch depths to revisions
-        to_parse = []
-        for depth, revision, branch in branchinfo.values():
-            if depth:
-                to_parse.append('%s~%d^{}' % (revision, depth - 1))
-
-        parsed = runfetchcmd("%s rev-parse %s" % (gitcmd, " ".join(to_parse)), d, workdir=dest)
-        shallow_revisions.extend(parsed.splitlines())
 
         cmd = ['git', 'make-shallow']
         for b in shallow_branches:
