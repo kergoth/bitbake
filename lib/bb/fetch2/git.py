@@ -382,7 +382,7 @@ class Git(FetchMethod):
                     self._populate_shallowclone(ud.clonedir, shallowclone, ud.basecmd, branchinfo, ud.nobranch, ud.shallow_extra_refs, ud.shallow_revs, ud.bareclone, d)
 
                     logger.info("Creating tarball of git repository")
-                    runfetchcmd("tar -czf %s %s" % (ud.fullshallow, os.path.join(".")), d, workdir=shallowclone)
+                    runfetchcmd("tar -czf %s ." % ud.fullshallow, d, workdir=shallowclone)
                     runfetchcmd("touch %s.done" % ud.fullshallow, d)
                 finally:
                     bb.utils.remove(tempdir, recurse=True)
