@@ -165,7 +165,7 @@ class BBCooker:
     Manages one bitbake build run
     """
 
-    def __init__(self, configuration, featureSet=None):
+    def __init__(self, configuration, featureSet=None, *, bblayers_only=False):
         self.recipecaches = None
         self.skiplist = {}
         self.featureset = CookerFeatures()
@@ -192,8 +192,6 @@ class BBCooker:
         bb.parse.__mtime_cache = {}
         bb.parse.BBHandler.cached_statements = {}
 
-        self.initConfigurationData()
-
         # we log all events to a file if so directed
         if self.configuration.writeeventlog:
             # register the log file writer as UI Handler
@@ -212,22 +210,6 @@ class BBCooker:
             return 1.0
 
         self.configuration.server_register_idlecallback(_process_inotify_updates, [self.confignotifier, self.notifier])
-
-        self.baseconfig_valid = True
-        self.parsecache_valid = False
-
-        # Take a lock so only one copy of bitbake can run against a given build
-        # directory at a time
-        if not self.lockBitbake():
-            bb.fatal("Only one copy of bitbake should be run against a build directory")
-        try:
-            self.lock.seek(0)
-            self.lock.truncate()
-            if len(configuration.interface) >= 2:
-                self.lock.write("%s:%s\n" % (configuration.interface[0], configuration.interface[1]));
-            self.lock.flush()
-        except:
-            pass
 
         # TOSTOP must not be set or our children will hang when they output
         try:
@@ -250,6 +232,24 @@ class BBCooker:
         signal.signal(signal.SIGTERM, self.sigterm_exception)
         # Let SIGHUP exit as SIGTERM
         signal.signal(signal.SIGHUP, self.sigterm_exception)
+
+        self.parsecache_valid = False
+
+        self.initConfigurationData(bblayers_only=bblayers_only)
+        self.baseconfig_valid = not bblayers_only
+
+        # Take a lock so only one copy of bitbake can run against a given build
+        # directory at a time
+        if not self.lockBitbake():
+            bb.fatal("Only one copy of bitbake should be run against a build directory")
+        try:
+            self.lock.seek(0)
+            self.lock.truncate()
+            if len(configuration.interface) >= 2:
+                self.lock.write("%s:%s\n" % (configuration.interface[0], configuration.interface[1]));
+            self.lock.flush()
+        except:
+            pass
 
     def config_notifications(self, event):
         if not event.pathname in self.configwatcher.bbwatchedfiles:
@@ -315,7 +315,7 @@ class BBCooker:
         if (original_featureset != list(self.featureset)) and self.state != state.error:
             self.reset()
 
-    def initConfigurationData(self):
+    def initConfigurationData(self, bblayers_only=False):
 
         self.state = state.initial
         self.caches_array = []
@@ -347,7 +347,10 @@ class BBCooker:
                 sys.exit("FATAL: Failed to import extra cache class '%s'." % cache_name)
 
         self.databuilder = bb.cookerdata.CookerDataBuilder(self.configuration, False)
-        self.databuilder.parseBaseConfiguration()
+        if bblayers_only:
+            self.databuilder.parseLayerConfiguration()
+        else:
+            self.databuilder.parseBaseConfiguration()
         self.data = self.databuilder.data
         self.data_hash = self.databuilder.data_hash
 
@@ -367,7 +370,6 @@ class BBCooker:
 
         self.data.renameVar("__depends", "__base_depends")
         self.add_filewatch(self.data.getVar("__base_depends", False), self.configwatcher)
-
 
     def enableDataTracking(self):
         self.configuration.tracking = True
