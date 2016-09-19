@@ -30,7 +30,7 @@ from bb.cookerdata import CookerConfiguration, ConfigParameters
 import bb.fetch2
 
 class Tinfoil:
-    def __init__(self, output=sys.stdout, tracking=False):
+    def __init__(self, output=sys.stdout, tracking=False, bblayers_only=False):
         # Needed to avoid deprecation warnings with python 2.6
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -52,7 +52,10 @@ class Tinfoil:
         if tracking:
             features.append(CookerFeatures.BASEDATASTORE_TRACKING)
         self.cooker = BBCooker(self.config, features)
-        self.cooker.initConfigurationData()
+        self.cooker.initConfigurationData(bblayers_only=bblayers_only)
+        if bblayers_only:
+            self.cooker.handleCollections(self.config_data.getVar("BBFILE_COLLECTIONS", True))
+        self.bblayers_only = bblayers_only
         self.config_data = self.cooker.data
         bb.providers.logger.setLevel(logging.ERROR)
         self.cooker_data = None
@@ -86,10 +89,16 @@ class Tinfoil:
     def prepare(self, config_only = False):
         if not self.cooker_data:
             if config_only:
+                if self.bblayers_only:
+                    self.cooker.initConfigurationData()
                 self.cooker.parseConfiguration()
                 self.cooker_data = self.cooker.recipecaches['']
             else:
                 self.parseRecipes()
+
+        if self.bblayers_only:
+            self.config_data = self.cooker.data
+            self.bblayers_only = False
 
     def parse_recipe_file(self, fn, appends=True, appendlist=None, config_data=None):
         """
@@ -106,6 +115,7 @@ class Tinfoil:
                          specify config_data then you cannot use a virtual
                          specification for fn.
         """
+        self.prepare()
         if appends and appendlist == []:
             appends = False
         if appends:
