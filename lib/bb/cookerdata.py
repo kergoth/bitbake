@@ -259,9 +259,15 @@ class CookerDataBuilder(object):
         self.data = self.basedata
         self.mcdata = {}
 
+        bb.parse.init_parser(self.basedata)
+
+    def parseLayerConfiguration(self):
+        self.data = self.parseLayerFiles(self.prefiles)
+        bb.parse.init_parser(self.data)
+        self.data_hash = self.data.get_hash()
+
     def parseBaseConfiguration(self):
         try:
-            bb.parse.init_parser(self.basedata)
             self.data = self.parseConfigurationFiles(self.prefiles, self.postfiles)
 
             if self.data.getVar("BB_WORKERCONTEXT", False) is None:
@@ -304,7 +310,7 @@ class CookerDataBuilder(object):
     def _findLayerConf(self, data):
         return findConfigFile("bblayers.conf", data)
 
-    def parseConfigurationFiles(self, prefiles, postfiles):
+    def parseLayerFiles(self, prefiles):
         data = bb.data.createCopy(self.basedata)
 
         # Parse files for loading *before* bitbake.conf and any includes
@@ -349,6 +355,11 @@ class CookerDataBuilder(object):
                         " the expected location.\nMaybe you accidentally"
                         " invoked bitbake from the wrong directory?")
             raise SystemExit(msg)
+
+        return data
+
+    def parseConfigurationFiles(self, prefiles, postfiles):
+        data = self.parseLayerFiles(prefiles)
 
         data = parse_config_file(os.path.join("conf", "bitbake.conf"), data)
 
