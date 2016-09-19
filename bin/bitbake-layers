@@ -32,10 +32,9 @@ sys.path[0:0] = [os.path.join(topdir, 'lib')]
 import bb.tinfoil
 
 
-def tinfoil_init(parserecipes):
+def tinfoil_init(bblayers_only=False):
     import bb.tinfoil
-    tinfoil = bb.tinfoil.Tinfoil(tracking=True)
-    tinfoil.prepare(not parserecipes)
+    tinfoil = bb.tinfoil.Tinfoil(tracking=True, bblayers_only=bblayers_only)
     tinfoil.logger.setLevel(logger.getEffectiveLevel())
     return tinfoil
 
@@ -86,7 +85,7 @@ def main():
     logger_setup_color(logger, global_args.color)
 
     plugins = []
-    tinfoil = tinfoil_init(False)
+    tinfoil = tinfoil_init(bblayers_only=True)
     try:
         for path in ([topdir] +
                     tinfoil.config_data.getVar('BBPATH', True).split(':')):
@@ -109,8 +108,10 @@ def main():
 
         if getattr(args, 'parserecipes', False):
             tinfoil.config_data.disableTracking()
-            tinfoil.parseRecipes()
+            tinfoil.prepare()
             tinfoil.config_data.enableTracking()
+        elif getattr(args, 'parseconfig', False):
+            tinfoil.prepare(config_only=True)
 
         return args.func(args)
     finally:
