@@ -103,6 +103,8 @@ class ProcessServer(Process, BaseImplServer):
             self.event_queue.put(event)
         self.event_handle.value = bb.event.register_UIHhandler(self, True)
 
+        if not self.cooker.baseconfig_valid:
+            self.cooker.initConfigurationData()
         heartbeat_event = self.cooker.data.getVar('BB_HEARTBEAT_EVENT')
         if heartbeat_event:
             try:
