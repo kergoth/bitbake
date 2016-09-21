@@ -367,7 +367,8 @@ def start_server(servermodule, configParams, configuration, features):
         raise
     if not configParams.foreground:
         server.detach()
-    cooker.lock.close()
+    if cooker.locked:
+        cooker.lock.close()
     return server
 
 

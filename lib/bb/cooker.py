@@ -192,8 +192,6 @@ class BBCooker:
         bb.parse.__mtime_cache = {}
         bb.parse.BBHandler.cached_statements = {}
 
-        self.initConfigurationData()
-
         # we log all events to a file if so directed
         if self.configuration.writeeventlog:
             # register the log file writer as UI Handler
@@ -212,22 +210,6 @@ class BBCooker:
             return 1.0
 
         self.configuration.server_register_idlecallback(_process_inotify_updates, [self.confignotifier, self.notifier])
-
-        self.baseconfig_valid = True
-        self.parsecache_valid = False
-
-        # Take a lock so only one copy of bitbake can run against a given build
-        # directory at a time
-        if not self.lockBitbake():
-            bb.fatal("Only one copy of bitbake should be run against a build directory")
-        try:
-            self.lock.seek(0)
-            self.lock.truncate()
-            if len(configuration.interface) >= 2:
-                self.lock.write("%s:%s\n" % (configuration.interface[0], configuration.interface[1]));
-            self.lock.flush()
-        except:
-            pass
 
         # TOSTOP must not be set or our children will hang when they output
         try:
@@ -250,6 +232,10 @@ class BBCooker:
         signal.signal(signal.SIGTERM, self.sigterm_exception)
         # Let SIGHUP exit as SIGTERM
         signal.signal(signal.SIGHUP, self.sigterm_exception)
+
+        self.baseconfig_valid = False
+        self.parsecache_valid = False
+        self.locked = False
 
     def config_notifications(self, event):
         if not event.pathname in self.configwatcher.bbwatchedfiles:
@@ -368,6 +354,21 @@ class BBCooker:
         self.data.renameVar("__depends", "__base_depends")
         self.add_filewatch(self.data.getVar("__base_depends", False), self.configwatcher)
 
+        if not self.locked:
+            self.locked = True
+
+            # Take a lock so only one copy of bitbake can run against a given build
+            # directory at a time
+            if not self.lockBitbake():
+                bb.fatal("Only one copy of bitbake should be run against a build directory")
+            try:
+                self.lock.seek(0)
+                self.lock.truncate()
+                if len(self.configuration.interface) >= 2:
+                    self.lock.write("%s:%s\n" % (self.configuration.interface[0], self.configuration.interface[1]));
+                self.lock.flush()
+            except:
+                pass
 
     def enableDataTracking(self):
         self.configuration.tracking = True
@@ -561,7 +562,7 @@ class BBCooker:
                 clean = False
         if not clean:
             logger.debug(1, "Base environment change, triggering reparse")
-            self.baseconfig_valid = False        
+            self.baseconfig_valid = False
             self.reset()
 
     def runCommands(self, server, data, abort):
@@ -1313,6 +1314,8 @@ class BBCooker:
 
         # Parse the configuration here. We need to do it explicitly here since
         # buildFile() doesn't use the cache
+        if not self.baseconfig_valid:
+            self.initConfigurationData()
         self.parseConfiguration()
 
         # If we are told to do the None task then query the default task
@@ -1721,6 +1724,9 @@ class BBCooker:
             bb.utils.unlockfile(self.lock)
 
 def server_main(cooker, func, *args):
+    if not cooker.baseconfig_valid:
+        cooker.initConfigurationData()
+
     cooker.pre_serve()
 
     if cooker.configuration.profile:
