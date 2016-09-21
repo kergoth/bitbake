@@ -301,10 +301,11 @@ class BBCooker:
         if (original_featureset != list(self.featureset)) and self.state != state.error:
             self.reset()
 
-    def initConfigurationData(self):
+    def initConfigurationData(self, bblayers_only=False):
         if self.baseconfig_valid:
             return
-        self.baseconfig_valid = True
+        if not bblayers_only:
+            self.baseconfig_valid = True
         self.parsecache_valid = False
 
         self.state = state.initial
@@ -337,7 +338,10 @@ class BBCooker:
                 sys.exit("FATAL: Failed to import extra cache class '%s'." % cache_name)
 
         self.databuilder = bb.cookerdata.CookerDataBuilder(self.configuration, False)
-        self.databuilder.parseBaseConfiguration()
+        if bblayers_only:
+            self.databuilder.parseLayerConfiguration()
+        else:
+            self.databuilder.parseBaseConfiguration()
         self.data = self.databuilder.data
         self.data_hash = self.databuilder.data_hash
 
