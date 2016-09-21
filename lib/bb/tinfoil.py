@@ -52,8 +52,7 @@ class Tinfoil:
         if tracking:
             features.append(CookerFeatures.BASEDATASTORE_TRACKING)
         self.cooker = BBCooker(self.config, features)
-        if not self.cooker.baseconfig_valid:
-            self.cooker.initConfigurationData()
+        self.cooker.initConfigurationData()
         self.config_data = self.cooker.data
         bb.providers.logger.setLevel(logging.ERROR)
         self.cooker_data = None
