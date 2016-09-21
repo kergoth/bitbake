@@ -310,6 +310,10 @@ class BBCooker:
             self.reset()
 
     def initConfigurationData(self):
+        if self.baseconfig_valid:
+            return
+        self.baseconfig_valid = True
+        self.parsecache_valid = False
 
         self.state = state.initial
         self.caches_array = []
@@ -1366,8 +1370,7 @@ class BBCooker:
 
         # Parse the configuration here. We need to do it explicitly here since
         # buildFile() doesn't use the cache
-        if not self.baseconfig_valid:
-            self.initConfigurationData()
+        self.initConfigurationData()
         self.parseConfiguration()
 
         # If we are told to do the None task then query the default task
@@ -1614,8 +1617,6 @@ class BBCooker:
         if not self.baseconfig_valid:
             logger.debug(1, "Reloading base configuration data")
             self.initConfigurationData()
-            self.baseconfig_valid = True
-            self.parsecache_valid = False
 
     # This is called for all async commands when self.state != running
     def updateCache(self):
@@ -1794,9 +1795,7 @@ class BBCooker:
             bb.utils.unlockfile(self.lock)
 
 def server_main(cooker, func, *args):
-    if not cooker.baseconfig_valid:
-        cooker.initConfigurationData()
-
+    cooker.initConfigurationData()
     cooker.pre_serve()
 
     if cooker.configuration.profile:
