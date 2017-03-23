@@ -631,16 +631,7 @@ def exec_task(fn, task, d, profile = False):
 
         if profile:
             profname = "profile-%s.log" % (d.getVar("PN") + "-" + task)
-            try:
-                import cProfile as profile
-            except:
-                import profile
-            prof = profile.Profile()
-            ret = profile.Profile.runcall(prof, _exec_task, fn, task, d, quieterr)
-            prof.dump_stats(profname)
-            bb.utils.process_profilelog(profname)
-
-            return ret
+            return bb.utils.profile_run(profname, _exec_task, fn, task, d, quieterr)
         else:
             return _exec_task(fn, task, d, quieterr)
 
