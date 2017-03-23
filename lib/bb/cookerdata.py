@@ -42,7 +42,9 @@ class ConfigParameters(object):
         self.options.pkgs_to_build = targets or []
 
         self.options.tracking = False
-        if hasattr(self.options, "show_environment") and self.options.show_environment:
+        if (hasattr(self.options, "show_environment") and
+                self.options.show_environment and
+                not self.options.no_variable_tracking):
             self.options.tracking = True
 
         for key, val in self.options.__dict__.items():

@@ -206,6 +206,9 @@ class BitBakeConfigParameters(cookerdata.ConfigParameters):
                           help="Show the global or per-recipe environment complete with information"
                                " about where variables were set/changed.")
 
+        parser.add_option("--no-variable-tracking", action="store_true",
+                          help="Disable variable tracking, which is enabled by default when using --environment/-e. The variable tracking feature adds variable history support to the -e output, but greatly increases memory usage")
+
         parser.add_option("-g", "--graphviz", action="store_true", dest="dot_graph", default=False,
                           help="Save dependency tree information for the specified "
                                "targets in the dot syntax.")

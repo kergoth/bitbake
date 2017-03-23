@@ -317,8 +317,8 @@ class VariableHistory(object):
                 o.write("# pre-expansion value:\n")
                 o.write('#   "%s"\n' % (commentVal))
         else:
-            o.write("#\n# $%s\n#   [no history recorded]\n#\n" % var)
-            o.write('#   "%s"\n' % (commentVal))
+            if oval != val:
+                o.write('# %s=%s\n' % (var, commentVal))
 
     def get_variable_files(self, var):
         """Get the files where operations are made on a variable"""
