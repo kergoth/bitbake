@@ -27,13 +27,7 @@ if len(sys.argv) != 2 or not sys.argv[1].startswith("decafbad"):
     print("bitbake-worker is meant for internal execution by bitbake itself, please don't use it standalone.")
     sys.exit(1)
 
-profiling = False
-if sys.argv[1].startswith("decafbadbad"):
-    profiling = True
-    try:
-        import cProfile as profile
-    except:
-        import profile
+profiling = sys.argv[1].startswith("decafbadbad")
 
 # Unbuffer stdout to avoid log truncation in the event
 # of an unorderly exit as well as to provide timely
@@ -283,12 +277,9 @@ def fork_off_task(cfg, data, databuilder, workerdata, fn, task, taskname, taskha
             os._exit(child())
         else:
             profname = "profile-%s.log" % (fn.replace("/", "-") + "-" + taskname)
-            prof = profile.Profile()
-            try: 
-                ret = profile.Profile.runcall(prof, child)
+            try:
+                ret = bb.utils.profile_run(profname, child)
             finally:
-                prof.dump_stats(profname)
-                bb.utils.process_profilelog(profname)
                 os._exit(ret)
     else:
         for key, value in iter(envbackup.items()):
@@ -494,12 +485,7 @@ try:
         worker.serve()
     else:
         profname = "profile-worker.log"
-        prof = profile.Profile()
-        try:
-            profile.Profile.runcall(prof, worker.serve)
-        finally:
-            prof.dump_stats(profname)
-            bb.utils.process_profilelog(profname)
+        bb.utils.profile_run(profname, worker.serve)
 except BaseException as e:
     if not normalexit:
         import traceback
