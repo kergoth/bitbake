@@ -1943,21 +1943,12 @@ class Parser(multiprocessing.Process):
         self.profile = profile
 
     def run(self):
-
         if not self.profile:
             self.realrun()
             return
 
-        try:
-            import cProfile as profile
-        except:
-            import profile
-        prof = profile.Profile()
-        try:
-            profile.Profile.runcall(prof, self.realrun)
-        finally:
-            logfile = "profile-parse-%s.log" % multiprocessing.current_process().name
-            prof.dump_stats(logfile)
+        logfile = "profile-parse-%s.log" % multiprocessing.current_process().name
+        bb.utils.profile_run(logfile, self.realrun)
 
     def realrun(self):
         if self.init:
