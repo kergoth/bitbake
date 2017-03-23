@@ -1636,3 +1636,18 @@ def is_semver(version):
         return False
 
     return True
+
+
+def profile_run(filename, func, *args, **argv):
+    """Run func with profiling enabled, writing the profiling data to filename."""
+    try:
+        import cProfile as profile
+    except ImportError:
+        import profile
+
+    prof = profile.Profile()
+    try:
+        return profile.Profile.runcall(prof, func, *args, **argv)
+    finally:
+        prof.dump_stats(filename)
+        process_profilelog(filename)
