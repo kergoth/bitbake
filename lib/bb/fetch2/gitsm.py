@@ -29,6 +29,7 @@ NOTE: Switching a SRC_URI from "git://" to "gitsm://" requires a clean of your r
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
+import collections
 import os
 import bb
 from   bb.fetch2.git import Git
@@ -36,11 +37,10 @@ from   bb.fetch2 import runfetchcmd
 from   bb.fetch2 import logger
 
 class GitSM(Git):
+    scheme = 'gitsm'
+
     def supports(self, ud, d):
-        """
-        Check to see if a given url can be fetched with git.
-        """
-        return ud.type in ['gitsm']
+        return ud.type == self.scheme
 
     def uses_submodules(self, ud, d, wd):
         for name in ud.names:
@@ -51,85 +51,113 @@ class GitSM(Git):
                 pass
         return False
 
-    def _set_relative_paths(self, repopath):
-        """
-        Fix submodule paths to be relative instead of absolute,
-        so that when we move the repo it doesn't break
-        (In Git 1.7.10+ this is done automatically)
-        """
-        submodules = []
-        with open(os.path.join(repopath, '.gitmodules'), 'r') as f:
-            for line in f.readlines():
-                if line.startswith('[submodule'):
-                    submodules.append(line.split('"')[1])
+    def need_update(self, ud, d):
+        if super().need_update(ud, d):
+            return True
 
-        for module in submodules:
-            repo_conf = os.path.join(repopath, module, '.git')
-            if os.path.exists(repo_conf):
-                with open(repo_conf, 'r') as f:
-                    lines = f.readlines()
-                newpath = ''
-                for i, line in enumerate(lines):
-                    if line.startswith('gitdir:'):
-                        oldpath = line.split(': ')[-1].rstrip()
-                        if oldpath.startswith('/'):
-                            newpath = '../' * (module.count('/') + 1) + '.git/modules/' + module
-                            lines[i] = 'gitdir: %s\n' % newpath
-                            break
-                if newpath:
-                    with open(repo_conf, 'w') as f:
-                        for line in lines:
-                            f.write(line)
+        if os.path.exists(ud.clonedir) and self.uses_submodules(ud, d, ud.clonedir):
+            fetcher = self.create_submodule_fetcher(ud, d)
+            for sm_url, sm_ud in fetcher.ud.items():
+                if sm_ud.method.need_update(sm_ud, d):
+                    return True
 
-            repo_conf2 = os.path.join(repopath, '.git', 'modules', module, 'config')
-            if os.path.exists(repo_conf2):
-                with open(repo_conf2, 'r') as f:
-                    lines = f.readlines()
-                newpath = ''
-                for i, line in enumerate(lines):
-                    if line.lstrip().startswith('worktree = '):
-                        oldpath = line.split(' = ')[-1].rstrip()
-                        if oldpath.startswith('/'):
-                            newpath = '../' * (module.count('/') + 3) + module
-                            lines[i] = '\tworktree = %s\n' % newpath
-                            break
-                if newpath:
-                    with open(repo_conf2, 'w') as f:
-                        for line in lines:
-                            f.write(line)
-
-    def update_submodules(self, ud, d):
-        # We have to convert bare -> full repo, do the submodule bit, then convert back
-        tmpclonedir = ud.clonedir + ".tmp"
-        gitdir = tmpclonedir + os.sep + ".git"
-        bb.utils.remove(tmpclonedir, True)
-        os.mkdir(tmpclonedir)
-        os.rename(ud.clonedir, gitdir)
-        runfetchcmd("sed " + gitdir + "/config -i -e 's/bare.*=.*true/bare = false/'", d)
-        runfetchcmd(ud.basecmd + " reset --hard", d, workdir=tmpclonedir)
-        runfetchcmd(ud.basecmd + " checkout -f " + ud.revisions[ud.names[0]], d, workdir=tmpclonedir)
-        runfetchcmd(ud.basecmd + " submodule update --init --recursive", d, workdir=tmpclonedir)
-        self._set_relative_paths(tmpclonedir)
-        runfetchcmd("sed " + gitdir + "/config -i -e 's/bare.*=.*false/bare = true/'", d, workdir=tmpclonedir)
-        os.rename(gitdir, ud.clonedir,)
-        bb.utils.remove(tmpclonedir, True)
+        return False
 
     def download(self, ud, d):
-        Git.download(self, ud, d)
+        if super().need_update(ud, d):
+            super().download(ud, d)
 
-        if not ud.shallow or ud.localpath != ud.fullshallow:
-            submodules = self.uses_submodules(ud, d, ud.clonedir)
-            if submodules:
-                self.update_submodules(ud, d)
+        if ud.shallow and ud.localpath == ud.fullshallow:
+            try:
+                submodule_urls = runfetchcmd("tar -xzOf %s ./.git/submodule_urls" % ud.fullshallow, d).splitlines()
+            except bb.fetch2.FetchError as exc:
+                return
+        elif not self.uses_submodules(ud, d, ud.clonedir):
+            return
+        else:
+            submodule_urls = None
+
+        fetcher = self.create_submodule_fetcher(ud, d, submodule_urls)
+        fetcher.download()
 
     def clone_shallow_local(self, ud, dest, d):
-        super(GitSM, self).clone_shallow_local(ud, dest, d)
+        super().clone_shallow_local(ud, dest, d)
 
-        runfetchcmd('cp -fpPRH "%s/modules" "%s/"' % (ud.clonedir, os.path.join(dest, '.git')), d)
+        gitdir = runfetchcmd('%s rev-parse --git-dir' % ud.basecmd, d, workdir=dest).rstrip()
+        gitdir = os.path.join(dest, gitdir)
+
+        submodule_urls = self.get_submodule_urls(ud, d)
+        with open(os.path.join(gitdir, 'submodule_urls'), 'w') as f:
+            f.writelines(u + '\n' for u in submodule_urls)
 
     def unpack(self, ud, destdir, d):
-        Git.unpack(self, ud, destdir, d)
+        super().unpack(ud, destdir, d)
 
-        if self.uses_submodules(ud, d, ud.destdir):
-            runfetchcmd(ud.basecmd + " checkout " + ud.revisions[ud.names[0]], d, workdir=ud.destdir)
-            runfetchcmd(ud.basecmd + " submodule update --init --recursive", d, workdir=ud.destdir)
+        if ud.shallow and (not os.path.exists(ud.clonedir) or self.need_update(ud, d)):
+            sm_urls = os.path.join(ud.destdir, '.git', 'submodule_urls')
+            if os.path.exists(sm_urls):
+                with open(sm_urls, 'r') as f:
+                    submodule_urls = f.read().splitlines()
+                self.unpack_submodules(ud, d, ud.destdir, submodule_urls)
+
+            if ud.bareclone:
+                runfetchcmd("mv .git/* . && rmdir .git", d, workdir=ud.destdir)
+        elif self.uses_submodules(ud, d, ud.clonedir):
+            self.unpack_submodules(ud, d, ud.destdir)
+
+    def unpack_submodules(self, ud, d, destdir, urls=None):
+        gitdir = runfetchcmd('%s rev-parse --git-dir' % ud.basecmd, d, workdir=destdir).rstrip()
+        gitdir = os.path.join(destdir, gitdir)
+        modulesdir = os.path.join(gitdir, 'modules')
+
+        fetcher = self.create_submodule_fetcher(ud, d, urls)
+        fetcher.unpack(modulesdir)
+
+        # We mark these bare to avoid a checkout, but submodules use them
+        # as non-bare repos with worktrees, so disable bare
+        for ud in fetcher.ud.values():
+            sm_dest = os.path.join(modulesdir, ud.parm['destsuffix'])
+            runfetchcmd(ud.basecmd + " config core.bare false", d, workdir=sm_dest)
+
+        runfetchcmd(ud.basecmd + " submodule update --init --recursive --no-fetch", d, workdir=destdir)
+        runfetchcmd(ud.basecmd + " submodule sync --recursive", d, workdir=destdir)
+
+    def create_submodule_fetcher(self, ud, d, urls=None, revision=None):
+        if urls is None:
+            urls = list(self.get_submodule_urls(ud, d, revision))
+        l = d.createCopy()
+        # Avoid conflict with explicit ;rev= in the urls
+        l.delVar('SRCREV')
+        return bb.fetch.Fetch(urls, l, cache=False)
+
+    def get_submodule_urls(self, ud, d, revision=None):
+        if revision is None:
+            revision = ud.revisions[ud.names[0]]
+
+        try:
+            config_lines = runfetchcmd("%s show %s:.gitmodules | git config -f - -l" % (ud.basecmd, revision), d, workdir=ud.clonedir)
+        except bb.fetch.FetchError:
+            return
+
+        submodules = collections.defaultdict(dict)
+        for line in config_lines.splitlines():
+            full_key, value = line.split('=', 1)
+            _, sm_name, key = full_key.split('.', 2)
+            submodules[sm_name][key] = value
+
+        for sm_name, sm_data in submodules.items():
+            tree_info = runfetchcmd("%s ls-tree %s %s" % (ud.basecmd, revision, sm_data['path']), d, workdir=ud.clonedir)
+            sm_revision = tree_info.split()[2]
+
+            # Construct a bitbake fetcher url from the git url
+            scheme, netloc, path, user, pw, param = bb.fetch2.decodeurl(sm_data['url'])
+            param['bareclone'] = '1'
+            param['protocol'] = scheme
+            param['rev'] = sm_revision
+            param['destsuffix'] = sm_name + os.sep
+            if 'branch' in sm_data:
+                param['branch'] = sm_data['branch']
+            else:
+                param['nobranch'] = '1'
+
+            yield bb.fetch2.encodeurl([self.scheme, netloc, path, user, pw, param])
