@@ -1231,7 +1231,6 @@ class GitShallowTest(FetcherTest):
         fetcher, ud = self.fetch_shallow(uri)
 
         self.assertRevCount(1)
-        assert './.git/modules/' in bb.process.run('tar -tzf %s' % os.path.join(self.dldir, ud.mirrortarballs[0]))[0]
         assert os.listdir(os.path.join(self.gitdir, 'gitsubmodule'))
 
     if any(os.path.exists(os.path.join(p, 'git-annex')) for p in os.environ.get('PATH').split(':')):
