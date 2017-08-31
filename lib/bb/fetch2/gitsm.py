@@ -150,7 +150,20 @@ class GitSM(Git):
             sm_revision = tree_info.split()[2]
 
             # Construct a bitbake fetcher url from the git url
-            scheme, netloc, path, user, pw, param = bb.fetch2.decodeurl(sm_data['url'])
+            url = sm_data['url']
+            try:
+                scheme, netloc, path, user, pw, param = bb.fetch.decodeurl(url)
+            except bb.fetch.MalformedUrl:
+                import re
+                # Two valid git remote locations which aren't valid urls: ssh
+                # user@host:path and a local path on disk
+                m = re.match('^([^/:]+):(.*)', url)
+                if m:
+                    url = 'ssh://' + m.group(1) + '/' + m.group(2)
+                    scheme, netloc, path, user, pw, param = bb.fetch.decodeurl(url)
+                else:
+                    scheme, netloc, path, user, pw, param = 'file', '', url, '', '', {}
+
             param['bareclone'] = '1'
             param['protocol'] = scheme
             param['rev'] = sm_revision
