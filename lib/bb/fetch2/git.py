@@ -400,6 +400,9 @@ class Git(FetchMethod):
             if os.path.islink(ud.fullmirror):
                 os.unlink(ud.fullmirror)
 
+            if os.path.exists(os.path.join(ud.clonedir, "shallow")):
+                raise bb.fetch2.FetchError("Unable to create full mirror tarball when using BB_GIT_SHALLOW_SINCE. Please enable shallow tarball creation.")
+
             logger.info("Creating tarball of git repository")
             runfetchcmd("tar -czf %s ." % ud.fullmirror, d, workdir=ud.clonedir)
             runfetchcmd("touch %s.done" % ud.fullmirror, d)
