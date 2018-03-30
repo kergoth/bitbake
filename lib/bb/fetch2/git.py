@@ -183,7 +183,14 @@ class Git(FetchMethod):
         if ud.bareclone:
             ud.cloneflags += " --mirror"
 
-        ud.shallow_since = d.getVar("BB_GIT_SHALLOW_SINCE")
+        sinces = [d.getVar("BB_GIT_SHALLOW_SINCE") or None]
+        for name in ud.names:
+            ss = d.getVar("BB_GIT_SHALLOW_SINCE_%s" % name)
+            if ss:
+                sinces.append(ss)
+        if len(sinces) > 1:
+            raise bb.fetch2.FetchError("In cases where multiple revs are fetched for a single url, only one SHALLOW_SINCE can be specified.")
+        ud.shallow_since = sinces[0]
 
         ud.shallow = d.getVar("BB_GIT_SHALLOW") == "1"
         ud.shallow_extra_refs = (d.getVar("BB_GIT_SHALLOW_EXTRA_REFS") or "").split()
