@@ -183,6 +183,8 @@ class Git(FetchMethod):
         if ud.bareclone:
             ud.cloneflags += " --mirror"
 
+        ud.shallow_since = d.getVar("BB_GIT_SHALLOW_SINCE")
+
         ud.shallow = d.getVar("BB_GIT_SHALLOW") == "1"
         ud.shallow_extra_refs = (d.getVar("BB_GIT_SHALLOW_EXTRA_REFS") or "").split()
 
@@ -342,7 +344,11 @@ class Git(FetchMethod):
             # We do this since git will use a "-l" option automatically for local urls where possible
             if repourl.startswith("file://"):
                 repourl = repourl[7:]
-            clone_cmd = "LANG=C %s clone --bare --mirror %s %s --progress" % (ud.basecmd, repourl, ud.clonedir)
+            if ud.shallow_since:
+                shallow_since = "--shallow-since=%s" % ud.shallow_since
+            else:
+                shallow_since = ""
+            clone_cmd = "LANG=C %s clone --bare --mirror %s %s %s --progress" % (ud.basecmd, shallow_since, repourl, ud.clonedir)
             if ud.proto.lower() != 'file':
                 bb.fetch2.check_network_access(d, clone_cmd, ud.url)
             progresshandler = GitProgressHandler(d)
