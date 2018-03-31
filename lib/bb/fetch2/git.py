@@ -360,8 +360,8 @@ class Git(FetchMethod):
             # We do this since git will use a "-l" option automatically for local urls where possible
             if repourl.startswith("file://"):
                 repourl = repourl[7:]
-            if ud.shallow_since:
-                shallow_since = "--shallow-since=%s" % ud.shallow_since
+            if ud.shallow and ud.shallow_since:
+                shallow_since = "'--shallow-since=%s'" % ud.shallow_since
             else:
                 shallow_since = ""
             clone_cmd = "LANG=C %s clone --bare --mirror %s %s %s --progress" % (ud.basecmd, shallow_since, repourl, ud.clonedir)
