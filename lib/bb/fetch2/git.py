@@ -193,11 +193,7 @@ class Git(FetchMethod):
             raise bb.fetch2.FetchError("In cases where multiple revs are fetched for a single url, only one SHALLOW_SINCE can be specified.")
 
         if not sinces:
-            since = d.getVar("BB_GIT_SHALLOW_SINCE")
-            if since:
-                ud.shallow_since = since
-            else:
-                ud.shallow_since = None
+            ud.shallow_since = d.getVar("BB_GIT_SHALLOW_SINCE") or None
         else:
             ud.shallow_since = sinces[0]
 
