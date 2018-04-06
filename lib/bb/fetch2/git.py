@@ -364,7 +364,15 @@ class Git(FetchMethod):
             if ud.proto.lower() != 'file':
                 bb.fetch2.check_network_access(d, clone_cmd, ud.url)
             progresshandler = GitProgressHandler(d)
-            runfetchcmd(clone_cmd, d, log=progresshandler)
+            try:
+                runfetchcmd(clone_cmd, d, log=progresshandler)
+            except Exception as exc:
+                if 'Server does not support --shallow-since' in str(exc):
+                    logger.warning('Git server does not support --shallow-since for %s, attempting without' % repourl)
+                    clone_cmd = "LANG=C %s clone --bare --mirror %s %s --progress" % (ud.basecmd, repourl, ud.clonedir)
+                    runfetchcmd(clone_cmd, d, log=progresshandler)
+                else:
+                    raise
 
         # Update the checkout if needed
         needupdate = False
