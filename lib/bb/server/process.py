@@ -97,16 +97,7 @@ class ProcessServer(multiprocessing.Process):
             pass
 
         if self.cooker.configuration.profile:
-            try:
-                import cProfile as profile
-            except:
-                import profile
-            prof = profile.Profile()
-
-            ret = profile.Profile.runcall(prof, self.main)
-
-            prof.dump_stats("profile.log")
-            bb.utils.process_profilelog("profile.log")
+            bb.utils.profile_run("profile.log", self.main)
             print("Raw profiling information saved to profile.log and processed statistics to profile.log.processed")
 
         else:
